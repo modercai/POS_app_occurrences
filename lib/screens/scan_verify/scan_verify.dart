@@ -1,19 +1,19 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-
 import 'package:permission_handler/permission_handler.dart';
+import 'package:image/image.dart' as img;
 
 class POSPrinterManager {
   FlutterBluetoothSerial bluetooth = FlutterBluetoothSerial.instance;
   BluetoothConnection? _connection;
   BluetoothDevice? _selectedPrinter;
   bool _isInitialized = false;
-  bool _isScanning = false;
 
   Future<bool> _checkPermissions() async {
     try {
@@ -82,40 +82,135 @@ class POSPrinterManager {
     }
   }
 
+
+  Uint8List _convertToUint8List(List<int> data) {
+    return Uint8List.fromList(data);
+  }
+
+  Future<Uint8List> _processLogo() async {
+    try {
+      // Load the logo from assets
+      final ByteData data = await rootBundle.load('assets/logo1.png');
+      final Uint8List imageBytes = data.buffer.asUint8List(
+          data.offsetInBytes,
+          data.lengthInBytes
+      );
+
+      // Decode the image using the Uint8List
+      final img.Image? originalImage = img.decodeImage(imageBytes);
+
+      if (originalImage == null) throw Exception('Failed to decode image');
+
+      // Resize image to appropriate width for printer (assuming 384px width)
+      final img.Image resizedImage = img.copyResize(
+        originalImage,
+        width: 384,
+        height: -1, // Maintain aspect ratio
+      );
+
+      // Convert to grayscale
+      final img.Image bwImage = img.grayscale(resizedImage);
+
+      // Convert image to bitmap format
+      List<int> commands = [];
+
+      // Printer commands for bitmap
+      final int widthBytes = (resizedImage.width + 7) ~/ 8;
+      final int height = resizedImage.height;
+
+      // Bitmap command
+      commands.add(0x1D);
+      commands.add(0x76);
+      commands.add(0x30);
+      commands.add(0x00);
+      commands.add(widthBytes & 0xFF);
+      commands.add((widthBytes >> 8) & 0xFF);
+      commands.add(height & 0xFF);
+      commands.add((height >> 8) & 0xFF);
+
+      // Convert image data to bitmap format
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < widthBytes; x++) {
+          int byte = 0;
+          for (int bit = 0; bit < 8; bit++) {
+            final int px = x * 8 + bit;
+            if (px < resizedImage.width) {
+              // Get the pixel and extract its luminance
+              final pixel = bwImage.getPixel(px, y);
+              // In grayscale image, r/g/b values are the same
+              final int intensity = pixel.r.toInt();
+              // Consider pixel black if below threshold
+              if (intensity < 128) {
+                byte |= (0x80 >> bit);
+              }
+            }
+          }
+          commands.add(byte);
+        }
+      }
+
+      return Uint8List.fromList(commands);
+    } catch (e) {
+      print('Logo processing error: $e');
+      return Uint8List(0);
+    }
+  }
+
   Future<void> printTicket(Map<String, dynamic> ticketDetails) async {
     try {
       if (!_isInitialized || _connection?.isConnected != true) {
         await initialize();
       }
 
-      List<int> bytes = [];
+      List<int> commands = [];
 
       // Initialize printer
-      bytes += [27, 64];  // ESC @
+      commands.add(27);
+      commands.add(64);  // ESC @
 
       // Center alignment
-      bytes += [27, 97, 1];  // ESC a 1
+      commands.add(27);
+      commands.add(97);
+      commands.add(1);  // ESC a 1
+
+      // Process and add logo
+      Uint8List logoBytes = await _processLogo();
+      commands.addAll(logoBytes);
+
+      // Add some spacing after logo
+      commands.add(27);
+      commands.add(74);
+      commands.add(2);  // Feed 2 lines
 
       // Text size: normal
-      bytes += [27, 33, 0];  // ESC ! 0
+      commands.add(27);
+      commands.add(33);
+      commands.add(0);  // ESC ! 0
 
       // Add header
-      bytes += utf8.encode('EVENT TICKET\n');
-      bytes += utf8.encode('----------------\n');
+      commands.addAll(utf8.encode('EVENT TICKET\n'));
+      commands.addAll(utf8.encode('----------------\n'));
 
       // Add ticket details
-      bytes += utf8.encode('Event: ${ticketDetails['event_name'] ?? 'N/A'}\n');
-      bytes += utf8.encode('Type: ${ticketDetails['ticket_type'] ?? 'N/A'}\n');
-      bytes += utf8.encode('Quantity: ${ticketDetails['quantity'] ?? 'N/A'}\n');
-      bytes += utf8.encode('Date: ${ticketDetails['purchase_date'] ?? 'N/A'}\n');
-      bytes += utf8.encode('----------------\n\n');
+      commands.addAll(utf8.encode('Event: ${ticketDetails['event_name'] ?? 'N/A'}\n'));
+      commands.addAll(utf8.encode('Type: ${ticketDetails['ticket_type'] ?? 'N/A'}\n'));
+      commands.addAll(utf8.encode('Quantity: ${ticketDetails['quantity'] ?? 'N/A'}\n'));
+      commands.addAll(utf8.encode('Date: ${ticketDetails['purchase_date'] ?? 'N/A'}\n\n\n\n\n'));
+      commands.addAll(utf8.encode('----------------\n\n'));
 
       // Feed and cut
-      bytes += [27, 74, 3];  // Feed 3 lines
-      bytes += [29, 86, 1];  // GS V 1 - Cut paper
+      commands.add(27);
+      commands.add(74);
+      commands.add(3);  // Feed 3 lines
+      commands.add(29);
+      commands.add(86);
+      commands.add(1);  // GS V 1 - Cut paper
+
+      // Convert final commands to Uint8List
+      final Uint8List finalBytes = Uint8List.fromList(commands);
 
       // Send to printer
-      _connection!.output.add(Uint8List.fromList(bytes));
+      _connection!.output.add(finalBytes);
       await _connection!.output.allSent;
 
       print('Ticket printed successfully');
@@ -217,10 +312,10 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
   Future<void> _verifyTicket(String nfcId) async {
     try {
       final response = await http.post(
-        Uri.parse('https://9e4d-45-215-255-59.ngrok-free.app/api/verify-nfc-action/'),
+        Uri.parse('https://c107538c00630cdab396b63c106581c5.serveo.net/api/verify-nfc-action/'),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzM3MDI1ODY0LCJpYXQiOjE3MzY5Mzk0NjQsImp0aSI6ImQxMjYwNjJiMWZlYzRlZjRhZDE0NzJhOTYyYzkwYzEzIiwidXNlcl9pZCI6MX0.hoNkVdVPA0H76bLlOMlq7odgVXr7sFnUiCSeJC74QcA',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzM3MTY2MDc3LCJpYXQiOjE3MzcwNzk2NzcsImp0aSI6ImE1NjJiNjdkYzU2MTQ1YzE5OTg1MjEzM2QzY2E4MjIwIiwidXNlcl9pZCI6MX0.rhQEacOoROcwZKFiNWeP5M1i9R2u894i0zn05zWIgHE',
         },
         body: jsonEncode({
           'nfc_id': nfcId,
