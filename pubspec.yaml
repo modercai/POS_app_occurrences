@@ -36,6 +36,10 @@ dependencies:
   flutter_bluetooth_serial: ^0.4.0
   permission_handler: ^10.2.0
   image: ^4.0.15
+  shared_preferences: ^2.4.0
+  dio: ^5.7.0
+  flutter_animate: ^4.5.2
+  intl: ^0.17.0
 
 
 

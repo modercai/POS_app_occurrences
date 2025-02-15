@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:occurences_pos/screens/login/login.dart';
 import 'package:occurences_pos/screens/products/products.dart';
 import 'package:occurences_pos/screens/scan_verify/scan_verify.dart';
 
@@ -25,7 +26,7 @@ class EventPOSDashboard extends StatelessWidget {
       label: 'Stoke',
       color: Colors.green,
         onTap:(context){
-
+        Navigator.push(context, MaterialPageRoute(builder: (context) => VendorLogin()));
         }
     ),
 
