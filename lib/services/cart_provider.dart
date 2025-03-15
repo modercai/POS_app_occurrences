@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import '../screens/products/products.dart';
+import '../models/product.dart';
 
 class CartItem {
   final Product product;
@@ -29,7 +29,7 @@ class CartProvider extends ChangeNotifier {
       // Increase quantity if item exists
       _items.update(
         product.name,
-            (existingItem) => CartItem(
+        (existingItem) => CartItem(
           product: existingItem.product,
           quantity: existingItem.quantity + 1,
         ),
@@ -38,7 +38,7 @@ class CartProvider extends ChangeNotifier {
       // Add new item
       _items.putIfAbsent(
         product.name,
-            () => CartItem(product: product),
+        () => CartItem(product: product),
       );
     }
     notifyListeners();
@@ -55,7 +55,7 @@ class CartProvider extends ChangeNotifier {
     if (_items[productName]!.quantity > 1) {
       _items.update(
         productName,
-            (existingItem) => CartItem(
+        (existingItem) => CartItem(
           product: existingItem.product,
           quantity: existingItem.quantity - 1,
         ),

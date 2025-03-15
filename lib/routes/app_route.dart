@@ -1,8 +1,6 @@
-
 import 'package:flutter/material.dart';
 import 'package:occurences_pos/screens/home/home.dart';
 import '../services/auth_services.dart';
-
 
 class AppRouter {
   final AuthService authService;
@@ -16,9 +14,9 @@ class AppRouter {
         switch (settings.name) {
           case '/':
             return MaterialPageRoute(
-              builder: (_) =>  EventPOSDashboard(),
+              builder: (_) => EventPOSDashboard(),
             );
-        // Add other vendor-specific routes here
+          //other vendor-specific routes here
           default:
         }
       },
@@ -26,7 +24,8 @@ class AppRouter {
   }
 
   // Helper method to handle navigation with user type check
-  Future<void> navigateBasedOnUserType(BuildContext context, String route) async {
+  Future<void> navigateBasedOnUserType(
+      BuildContext context, String route) async {
     final userData = await authService.checkAuthStatus();
     final userType = userData['user_type']?.toString().toUpperCase();
 
@@ -40,7 +39,8 @@ class AppRouter {
         Navigator.of(context).pushNamed(route);
         break;
       default:
-      // Handle invalid user type
+        // Handle invalid user type
         break;
     }
-  }}
+  }
+}

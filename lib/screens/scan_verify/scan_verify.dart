@@ -74,14 +74,14 @@ class POSPrinterManager {
 
   Future<void> _connectToPrinter() async {
     try {
-      _connection = await BluetoothConnection.toAddress(_selectedPrinter!.address);
+      _connection =
+          await BluetoothConnection.toAddress(_selectedPrinter!.address);
       print('Connected to printer: ${_selectedPrinter!.name}');
     } catch (e) {
       print('Printer connection error: $e');
       rethrow;
     }
   }
-
 
   Uint8List _convertToUint8List(List<int> data) {
     return Uint8List.fromList(data);
@@ -91,10 +91,8 @@ class POSPrinterManager {
     try {
       // Load the logo from assets
       final ByteData data = await rootBundle.load('assets/logo1.png');
-      final Uint8List imageBytes = data.buffer.asUint8List(
-          data.offsetInBytes,
-          data.lengthInBytes
-      );
+      final Uint8List imageBytes =
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
 
       // Decode the image using the Uint8List
       final img.Image? originalImage = img.decodeImage(imageBytes);
@@ -166,12 +164,12 @@ class POSPrinterManager {
 
       // Initialize printer
       commands.add(27);
-      commands.add(64);  // ESC @
+      commands.add(64); // ESC @
 
       // Center alignment
       commands.add(27);
       commands.add(97);
-      commands.add(1);  // ESC a 1
+      commands.add(1); // ESC a 1
 
       // Process and add logo
       Uint8List logoBytes = await _processLogo();
@@ -180,31 +178,35 @@ class POSPrinterManager {
       // Add some spacing after logo
       commands.add(27);
       commands.add(74);
-      commands.add(2);  // Feed 2 lines
+      commands.add(2); // Feed 2 lines
 
       // Text size: normal
       commands.add(27);
       commands.add(33);
-      commands.add(0);  // ESC ! 0
+      commands.add(0); // ESC ! 0
 
       // Add header
       commands.addAll(utf8.encode('EVENT TICKET\n'));
       commands.addAll(utf8.encode('----------------\n'));
 
       // Add ticket details
-      commands.addAll(utf8.encode('Event: ${ticketDetails['event_name'] ?? 'N/A'}\n'));
-      commands.addAll(utf8.encode('Type: ${ticketDetails['ticket_type'] ?? 'N/A'}\n'));
-      commands.addAll(utf8.encode('Quantity: ${ticketDetails['quantity'] ?? 'N/A'}\n'));
-      commands.addAll(utf8.encode('Date: ${ticketDetails['purchase_date'] ?? 'N/A'}\n\n\n\n\n'));
+      commands.addAll(
+          utf8.encode('Event: ${ticketDetails['event_name'] ?? 'N/A'}\n'));
+      commands.addAll(
+          utf8.encode('Type: ${ticketDetails['ticket_type'] ?? 'N/A'}\n'));
+      commands.addAll(
+          utf8.encode('Quantity: ${ticketDetails['quantity'] ?? 'N/A'}\n'));
+      commands.addAll(utf8.encode(
+          'Date: ${ticketDetails['purchase_date'] ?? 'N/A'}\n\n\n\n\n'));
       commands.addAll(utf8.encode('----------------\n\n'));
 
       // Feed and cut
       commands.add(27);
       commands.add(74);
-      commands.add(3);  // Feed 3 lines
+      commands.add(3); // Feed 3 lines
       commands.add(29);
       commands.add(86);
-      commands.add(1);  // GS V 1 - Cut paper
+      commands.add(1); // GS V 1 - Cut paper
 
       // Convert final commands to Uint8List
       final Uint8List finalBytes = Uint8List.fromList(commands);
@@ -242,15 +244,11 @@ class NFCVerificationPage extends StatefulWidget {
   _NFCVerificationPageState createState() => _NFCVerificationPageState();
 }
 
-
-
 class _NFCVerificationPageState extends State<NFCVerificationPage> {
   bool _nfcAvailable = false;
   String _statusMessage = 'Initializing NFC...';
   bool _isScanning = false;
   bool _isPrinterReady = false;
-
-
 
   final POSPrinterManager _printerManager = POSPrinterManager();
 
@@ -261,21 +259,23 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
     _initializePrinter();
   }
 
-
   Future<void> _checkNFCAvailability() async {
     try {
       bool isAvailable = await NfcManager.instance.isAvailable();
+      if (!mounted) return;
       setState(() {
         _nfcAvailable = isAvailable;
         _statusMessage = isAvailable ? 'Ready to scan' : 'NFC not available';
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _statusMessage = 'Error checking NFC: $e');
     }
   }
 
   Future<void> _startNFCScanning() async {
-    if (!_nfcAvailable) return;
+    if (!_nfcAvailable || !mounted) return;
+
     setState(() {
       _isScanning = true;
       _statusMessage = 'Scanning for NFC tag...';
@@ -283,15 +283,21 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
 
     try {
       await NfcManager.instance.startSession(onDiscovered: (NfcTag tag) async {
+        if (!mounted) return;
+
         String? identifier = await _extractNFCId(tag);
         if (identifier != null) {
+          if (!mounted) return;
+
           setState(() => _statusMessage = 'Tag read: $identifier');
           await _verifyTicket(identifier);
         }
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _statusMessage = 'NFC error: $e');
     } finally {
+      if (!mounted) return;
       setState(() => _isScanning = false);
     }
   }
@@ -301,7 +307,9 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
       final nfca = tag.data['nfca'] ?? {};
       final identifier = nfca['identifier'] as List<int>?;
       if (identifier != null) {
-        return identifier.map((e) => e.toRadixString(16).padLeft(2, '0')).join();
+        return identifier
+            .map((e) => e.toRadixString(16).padLeft(2, '0'))
+            .join();
       }
     } catch (e) {
       print('NFC extraction error: $e');
@@ -312,10 +320,12 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
   Future<void> _verifyTicket(String nfcId) async {
     try {
       final response = await http.post(
-        Uri.parse('https://c107538c00630cdab396b63c106581c5.serveo.net/api/verify-nfc-action/'),
+        Uri.parse(
+            'https://2f01-45-215-255-200.ngrok-free.app/api/verify-nfc-action/'),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzM3MTY2MDc3LCJpYXQiOjE3MzcwNzk2NzcsImp0aSI6ImE1NjJiNjdkYzU2MTQ1YzE5OTg1MjEzM2QzY2E4MjIwIiwidXNlcl9pZCI6MX0.rhQEacOoROcwZKFiNWeP5M1i9R2u894i0zn05zWIgHE',
+          'Authorization':
+              'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzQwMDk5MDM4LCJpYXQiOjE3NDAwMTI2MzgsImp0aSI6IjE2NDMxMDQzOTg4YjQ0YjViOGYyMDRjNTE1ZTVjZjAyIiwidXNlcl9pZCI6Mn0.vL6Jhb8tzZyb0Y102LELN2pSatkxIFcXEGkesg-KeTs',
         },
         body: jsonEncode({
           'nfc_id': nfcId,
@@ -323,6 +333,8 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
           'ticket_id': 1,
         }),
       );
+
+      if (!mounted) return;
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -332,6 +344,7 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
         await _showVerificationResult(false, {'error': error});
       }
     } catch (e) {
+      if (!mounted) return;
       print('API error: $e');
       await _showVerificationResult(false, {'error': 'Connection error'});
     }
@@ -340,11 +353,13 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
   Future<void> _initializePrinter() async {
     try {
       await _printerManager.initialize();
+      if (!mounted) return;
       setState(() {
         _isPrinterReady = true;
         _statusMessage = 'System ready';
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isPrinterReady = false;
         _statusMessage = 'Printer error: $e';
@@ -354,28 +369,36 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
 
 // When printing
   Future<void> _printTicket(Map<String, dynamic> ticketDetails) async {
+    if (!mounted) return;
+
     try {
       setState(() => _statusMessage = 'Printing ticket...');
       await _printerManager.printTicket(ticketDetails);
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ticket printed successfully')),
       );
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to print ticket: $e')),
       );
     } finally {
+      if (!mounted) return;
       setState(() => _statusMessage = 'Ready to scan');
     }
   }
 
   @override
   void dispose() {
+    NfcManager.instance.stopSession(); // Stop NFC session
     _printerManager.dispose();
     super.dispose();
   }
 
-  Future<void> _showVerificationResult(bool isValid, Map<String, dynamic> details) async {
+  Future<void> _showVerificationResult(
+      bool isValid, Map<String, dynamic> details) async {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -456,9 +479,7 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
                     height: 50,
                     child: ElevatedButton(
                       onPressed: _nfcAvailable ? _startNFCScanning : null,
-                      style: ElevatedButton.styleFrom(
-
-                      ),
+                      style: ElevatedButton.styleFrom(),
                       child: Text(
                         _isScanning ? 'Scanning...' : 'Scan Ticket',
                         style: const TextStyle(
@@ -494,5 +515,4 @@ class _NFCVerificationPageState extends State<NFCVerificationPage> {
       ),
     );
   }
-
 }
