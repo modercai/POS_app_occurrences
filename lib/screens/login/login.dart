@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:occurences_pos/screens/home/home.dart';
 import '../../services/auth_services.dart';
-
+import '../../services/api_service.dart';
 
 class VendorLogin extends StatefulWidget {
   final VoidCallback? onRegisterTap;
@@ -17,6 +17,7 @@ class _VendorLoginState extends State<VendorLogin> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  final _apiService = ApiService();
 
   bool _isLoading = false;
   bool _isPasswordVisible = false;
@@ -26,13 +27,12 @@ class _VendorLoginState extends State<VendorLogin> {
       setState(() => _isLoading = true);
 
       try {
-        final authService = AuthService();
-        final success = await authService.mobileLogin(
+        final result = await _apiService.login(
           _usernameController.text,
           _passwordController.text,
         );
 
-        if (success && mounted) {
+        if (result['success'] && mounted) {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (context) => EventPOSDashboard()),
           );
@@ -40,6 +40,7 @@ class _VendorLoginState extends State<VendorLogin> {
           _showErrorSnackbar();
         }
       } catch (error) {
+        print('Login error: $error');
         _showErrorSnackbar();
       } finally {
         if (mounted) setState(() => _isLoading = false);
@@ -80,32 +81,29 @@ class _VendorLoginState extends State<VendorLogin> {
                     ),
                     textAlign: TextAlign.center,
                   ).animate().slideY(duration: 400.ms),
-
                   const SizedBox(height: 16),
-
                   TextFormField(
                     controller: _usernameController,
                     decoration: InputDecoration(
                       labelText: 'Username',
-                      prefixIcon: Icon(Icons.business_center_outlined, color: Colors.teal.shade300),
+                      prefixIcon: Icon(Icons.business_center_outlined,
+                          color: Colors.teal.shade300),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(15),
                       ),
                     ),
-                    validator: (value) =>
-                    value == null || value.isEmpty
+                    validator: (value) => value == null || value.isEmpty
                         ? 'Please enter your vendor username'
                         : null,
                   ).animate().fadeIn(duration: 500.ms),
-
                   const SizedBox(height: 16),
-
                   TextFormField(
                     controller: _passwordController,
                     obscureText: !_isPasswordVisible,
                     decoration: InputDecoration(
                       labelText: 'Pin',
-                      prefixIcon: Icon(Icons.lock_outline, color: Colors.teal.shade300),
+                      prefixIcon:
+                          Icon(Icons.lock_outline, color: Colors.teal.shade300),
                       suffixIcon: IconButton(
                         icon: Icon(_isPasswordVisible
                             ? Icons.visibility_off
@@ -118,27 +116,21 @@ class _VendorLoginState extends State<VendorLogin> {
                         borderRadius: BorderRadius.circular(15),
                       ),
                     ),
-                    validator: (value) =>
-                    value == null || value.isEmpty
+                    validator: (value) => value == null || value.isEmpty
                         ? 'Please enter your password'
                         : null,
                   ).animate().fadeIn(duration: 600.ms),
-
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () => (){
-
-                      },
+                      onPressed: () => () {},
                       child: Text(
                         'Forgot Password?',
                         style: TextStyle(color: Colors.teal.shade700),
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 24),
-
                   ElevatedButton(
                     onPressed: _isLoading ? null : _vendorSignIn,
                     style: ElevatedButton.styleFrom(
@@ -150,15 +142,10 @@ class _VendorLoginState extends State<VendorLogin> {
                     ),
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
-                        'Sign In',
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold
-                        )
-                    ),
+                        : const Text('Sign In',
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold)),
                   ).animate().slideY(begin: 0.5, end: 0),
-
                   const SizedBox(height: 24),
                 ],
               ),

@@ -2,75 +2,69 @@ import 'package:flutter/material.dart';
 import 'package:occurences_pos/screens/login/login.dart';
 import 'package:occurences_pos/screens/products/products.dart';
 import 'package:occurences_pos/screens/scan_verify/scan_verify.dart';
-
+import 'package:occurences_pos/services/api_service.dart';
 
 class EventPOSDashboard extends StatelessWidget {
   final List<MenuOption> menuItems = [
     MenuOption(
-      icon: Icons.confirmation_number_outlined,
-      label: 'Sell Tickets',
-      color: Colors.blue,
-        onTap:(context){
-
-        }
-    ),
+        icon: Icons.confirmation_number_outlined,
+        label: 'Sell Tickets',
+        color: Colors.blue,
+        onTap: (context) {}),
     MenuOption(
       icon: Icons.qr_code_scanner,
       label: 'Scan & Verify',
-      color: Colors.purple, onTap:(context) {
-       Navigator.push(context, MaterialPageRoute(builder: (context) => NFCVerificationPage()));
-    },
+      color: Colors.purple,
+      onTap: (context) {
+        Navigator.push(context,
+            MaterialPageRoute(builder: (context) => NFCVerificationPage()));
+      },
     ),
     MenuOption(
-      icon: Icons.event,
-      label: 'Stoke',
-      color: Colors.green,
-        onTap:(context){
-        Navigator.push(context, MaterialPageRoute(builder: (context) => VendorLogin()));
-        }
-    ),
-
+        icon: Icons.event,
+        label: 'Stoke',
+        color: Colors.green,
+        onTap: (context) {
+          Navigator.push(
+              context, MaterialPageRoute(builder: (context) => VendorLogin()));
+        }),
     MenuOption(
-      icon: Icons.payment,
-      label: 'Products',
-      color: Colors.orange,
-      onTap:(context){
-        Navigator.push(context, MaterialPageRoute(builder: (context) => ProductsPage()));
-    }
-    ),
+        icon: Icons.payment,
+        label: 'Products',
+        color: Colors.orange,
+        onTap: (context) {
+          Navigator.push(
+              context, MaterialPageRoute(builder: (context) => ProductsPage()));
+        }),
     MenuOption(
-      icon: Icons.history,
-      label: 'Transaction History',
-      color: Colors.pink,
-        onTap:(context){
-
-        }
-    ),
+        icon: Icons.history,
+        label: 'Transaction History',
+        color: Colors.pink,
+        onTap: (context) {}),
     MenuOption(
-      icon: Icons.people,
-      label: 'Attendees',
-      color: Colors.cyan,
-        onTap:(context){
-
-        }
-    ),
+        icon: Icons.people,
+        label: 'Attendees',
+        color: Colors.cyan,
+        onTap: (context) {}),
     MenuOption(
-      icon: Icons.bar_chart,
-      label: 'Analytics',
-      color: Colors.amber,
-        onTap:(context){
-
-        }
-    ),
+        icon: Icons.bar_chart,
+        label: 'Analytics',
+        color: Colors.amber,
+        onTap: (context) {}),
     MenuOption(
-      icon: Icons.settings,
-      label: 'Settings',
-      color: Colors.grey,
-        onTap:(context){
-
-        }
-    ),
+        icon: Icons.settings,
+        label: 'Settings',
+        color: Colors.grey,
+        onTap: (context) {}),
   ];
+
+  void _handleLogout(BuildContext context) async {
+    await ApiService().logout();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => VendorLogin()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +121,8 @@ class EventPOSDashboard extends StatelessWidget {
                             decoration: InputDecoration(
                               hintText: 'Search events...',
                               hintStyle: TextStyle(color: Colors.white70),
-                              prefixIcon: Icon(Icons.search, color: Colors.white70),
+                              prefixIcon:
+                                  Icon(Icons.search, color: Colors.white70),
                               border: InputBorder.none,
                               contentPadding: EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -138,6 +133,12 @@ class EventPOSDashboard extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // Add Logout Button
+                    IconButton(
+                      icon: Icon(Icons.logout, color: Colors.white),
+                      onPressed: () => _handleLogout(context),
+                      tooltip: 'Logout',
+                    ),
                   ],
                 ),
                 SizedBox(height: 24),
@@ -145,7 +146,8 @@ class EventPOSDashboard extends StatelessWidget {
                 Expanded(
                   child: GridView.builder(
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 2,
+                      crossAxisCount:
+                          MediaQuery.of(context).size.width > 600 ? 4 : 2,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
                       childAspectRatio: 1,
@@ -193,7 +195,7 @@ class MenuCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
       ),
       child: InkWell(
-        onTap: () => menuOption.onTap(context),  // Updated to use the callback
+        onTap: () => menuOption.onTap(context), // Updated to use the callback
         borderRadius: BorderRadius.circular(16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

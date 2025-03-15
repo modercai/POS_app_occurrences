@@ -7,29 +7,18 @@ import 'package:nfc_manager/nfc_manager.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import '../../services/cart_provider.dart';
-import '../scan_verify/scan_verify.dart'; // For POSPrinterManager
+import '../../services/api_service.dart'; // Import the ApiService
+import '../../services/receipt_printer_manager.dart';
 
 class CartPage extends StatefulWidget {
   @override
   State<CartPage> createState() => _CartPageState();
 }
 
-class Product {
-  final int id; // Add this field
-  final String name;
-  final double price;
-  // Other existing fields...
-
-  Product({
-    required this.id, // Update constructor
-    required this.name,
-    required this.price,
-    // Other parameters...
-  });
-}
+// Remove the Product class definition since we're now using the shared model
 
 class _CartPageState extends State<CartPage> {
-  final POSPrinterManager _printerManager = POSPrinterManager();
+  final ReceiptPrinterManager _printerManager = ReceiptPrinterManager();
   bool _isPrinterReady = false;
 
   @override
@@ -54,23 +43,29 @@ class _CartPageState extends State<CartPage> {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Tap NFC Card'),
+          title: Row(
+            children: [
+              Icon(Icons.nfc, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('Tap NFC Card'),
+            ],
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.nfc,
-                size: 50,
-                color: Colors.blue,
-              ),
+              Icon(Icons.nfc),
               SizedBox(height: 16),
-              Text('Please tap your NFC card to proceed with checkout'),
+              Text(
+                'Please ask the customer to tap their NFC card to proceed with payment',
+                textAlign: TextAlign.center,
+              ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
               child: Text('Cancel'),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
             ),
           ],
         );
@@ -119,18 +114,30 @@ class _CartPageState extends State<CartPage> {
         await _initializePrinter();
       }
 
-      await _printerManager.printTicket({
-        'event_name': 'Purchase Receipt',
-        'ticket_type': 'Transaction',
-        'quantity': purchaseDetails['quantity'].toString(),
-        'purchase_date': DateTime.now().toString(),
-        // Add more details as needed
-      });
+      final now = DateTime.now();
+      final formattedDate = "${now.day}/${now.month}/${now.year}";
+      final formattedTime =
+          "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+
+      // Format receipt data
+      final receiptData = {
+        'date': formattedDate,
+        'time': formattedTime,
+        'transaction_id': purchaseDetails['id'],
+        'product_name': purchaseDetails['product_name'],
+        'quantity': purchaseDetails['quantity'],
+        'total_amount': purchaseDetails['total_amount'],
+        'buyer_balance': purchaseDetails['buyer_balance'],
+      };
+
+      // Print receipt using new manager
+      await _printerManager.printReceipt(receiptData);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Receipt printed successfully')),
       );
     } catch (e) {
+      print('Printing error details: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to print receipt: $e')),
       );
@@ -139,6 +146,7 @@ class _CartPageState extends State<CartPage> {
 
   Future<void> proceedToCheckout(BuildContext context) async {
     final cartProvider = Provider.of<CartProvider>(context, listen: false);
+    final apiService = ApiService();
 
     if (cartProvider.items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -147,14 +155,15 @@ class _CartPageState extends State<CartPage> {
       return;
     }
 
-    // Show NFC prompt dialog
+    // Show scanning dialog
     await _showNFCPromptDialog(context);
 
     try {
       // Start NFC scanning
       String? nfcId = await _scanNFCTag(context);
+      if (!mounted) return;
 
-      // Dismiss the NFC prompt dialog
+      // Close NFC prompt
       Navigator.pop(context);
 
       if (nfcId == null) {
@@ -164,69 +173,77 @@ class _CartPageState extends State<CartPage> {
         return;
       }
 
-      // For each item in the cart, make an API call
-      for (var cartItem in cartProvider.items.values) {
-        final response = await http.post(
-          Uri.parse(
-              'https://95ff-197-213-61-131.ngrok-free.app/api/nfc-product-purchase/'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization':
-                'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzM5NzA5MTgzLCJpYXQiOjE3Mzk2MjI3ODMsImp0aSI6ImRkMGYwMzczZjU0MjRkNWY4ODhiYmRkYTM5YmE1NDIxIiwidXNlcl9pZCI6MX0.1Fafhyg4IOY89S9xVgQ5w7rlDbuFqocWn6pPJ_8LQdo',
-          },
-          body: jsonEncode({
-            'nfc_id': nfcId,
-            'event_product_id': cartItem.product.id, // Use product ID
-            'quantity': cartItem.quantity,
-          }),
-        );
-
-        if (response.statusCode == 201) {
-          final responseData = jsonDecode(response.body);
-
-          // After successful purchase, show print dialog
-          final purchaseDetails = {
-            'quantity': cartItem.quantity,
-            'product_name': cartItem.product.name,
-            'price': cartItem.product.price,
-            'total': cartItem.quantity * cartItem.product.price,
-            'buyer_balance': responseData['buyer_balance'],
-          };
-
-          bool shouldPrint = await _showPrintDialog(context, purchaseDetails);
-          if (shouldPrint) {
-            await _handlePrinting(purchaseDetails);
-          }
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Purchase successful! Remaining balance: ZMW ${responseData['buyer_balance']}',
-              ),
-            ),
-          );
-        } else {
-          final errorData = jsonDecode(response.body);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorData['error'] ?? 'Purchase failed'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      // Dismiss the NFC prompt dialog if still showing
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('An error occurred: $e'),
-          backgroundColor: Colors.red,
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: CircularProgressIndicator(),
         ),
       );
+
+      final result = await apiService.processCartCheckout(
+        nfcId,
+        cartProvider.items.values.toList(),
+      );
+
+      // Close loading indicator
+      Navigator.pop(context);
+
+      if (result['success']) {
+        // Get the purchase data (assuming it's a list of purchases)
+        final List<dynamic> purchases = result['data'];
+        if (purchases.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No purchase data received')),
+          );
+          return;
+        }
+
+        // Get the last purchase for the receipt
+        final lastPurchase = purchases.last;
+
+        // Debug print to verify the data
+        print('Last Purchase Data: $lastPurchase');
+
+        final shouldPrint = await _showTransactionSuccessDialog(
+          context,
+          purchases,
+          lastPurchase['buyer_balance'],
+        );
+
+        if (shouldPrint) {
+          // Create a properly formatted purchase details map
+          final printData = {
+            'id': lastPurchase['id']?.toString() ?? 'N/A',
+            'product_name':
+                lastPurchase['product_name']?.toString() ?? 'Unknown Product',
+            'quantity': lastPurchase['quantity']?.toString() ?? '0',
+            'total_amount':
+                (lastPurchase['total_amount'] ?? 0.0).toStringAsFixed(2),
+            'buyer_balance':
+                (lastPurchase['buyer_balance'] ?? 0.0).toStringAsFixed(2),
+            'created_at': lastPurchase['created_at']?.toString() ??
+                DateTime.now().toString(),
+          };
+          await _handlePrinting(printData);
+        }
+
+        // Clear cart and navigate back
+        cartProvider.clear();
+        Navigator.pop(context);
+      } else {
+        _showErrorDialog(context, result['error'], result['details']);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An error occurred: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -255,6 +272,123 @@ class _CartPageState extends State<CartPage> {
     }
 
     return completer.future;
+  }
+
+  Future<bool> _showTransactionSuccessDialog(
+    BuildContext context,
+    List<dynamic> purchases,
+    dynamic finalBalance,
+  ) async {
+    // Safely parse the final balance
+    double safeBalance = 0.0;
+    try {
+      safeBalance =
+          finalBalance != null ? double.parse(finalBalance.toString()) : 0.0;
+    } catch (e) {
+      print('Error parsing final balance: $e');
+    }
+
+    return await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Purchase Successful'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Transaction Summary:'),
+            SizedBox(height: 8),
+            ...purchases.map((purchase) {
+              // Safely parse numeric values
+              int quantity = 0;
+              double totalAmount = 0.0;
+              String productName =
+                  purchase['product_name']?.toString() ?? 'Unknown Product';
+
+              try {
+                quantity = int.parse(purchase['quantity']?.toString() ?? '0');
+              } catch (e) {
+                print('Error parsing quantity: $e');
+              }
+
+              try {
+                totalAmount =
+                    double.parse(purchase['total_amount']?.toString() ?? '0.0');
+              } catch (e) {
+                print('Error parsing total amount: $e');
+              }
+
+              return Text(
+                '${quantity}x $productName - ZMW ${totalAmount.toStringAsFixed(2)}',
+              );
+            }).toList(),
+            Divider(),
+            Text(
+              'Remaining Balance: ZMW ${safeBalance.toStringAsFixed(2)}',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 16),
+            Text('Would you like to print a receipt?'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('No'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Yes, Print Receipt'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showErrorDialog(BuildContext context, String error, dynamic details) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Transaction Failed'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(error),
+            if (details != null && details['balance'] != null) ...[
+              SizedBox(height: 8),
+              Text(
+                'Available Balance: ZMW ${details['balance']}',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                'Required Amount: ZMW ${details['required']}',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
